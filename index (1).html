@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Celengan Pintar — Input & Kontrol PIN via Web (MQTT)</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      --bg-cream: #fff8e6;
+      --accent-matcha: #cedba5;
+      --accent-matcha-dark: #8ca356;
+      --text-main: #2d3426;
+      --text-muted: #626b58;
+      --card-bg: #ffffff;
+      --border-soft: #e6e2d3;
+      --status-ok: #4d8a3f;
+      --status-err: #c44536;
+      --status-wait: #b8860b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-cream);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 24px 16px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      background: var(--accent-matcha);
+      padding: 20px 24px;
+      border-radius: 16px;
+      box-shadow: 0 6px 18px rgba(45, 52, 38, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    header p {
+      font-size: 0.88rem;
+      color: #3f4a35;
+      margin-top: 2px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--status-wait);
+    }
+
+    .dot.connected { background: var(--status-ok); }
+    .dot.error { background: var(--status-err); }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      padding: 20px 24px;
+      box-shadow: 0 6px 18px rgba(45, 52, 38, 0.05);
+    }
+
+    .card-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .balance-amount {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.1;
+    }
+
+    .pin-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .pin-row input {
+      flex: 1;
+      min-width: 160px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      background: #fcfbf7;
+      font-size: 0.95rem;
+      color: var(--text-main);
+      letter-spacing: 0.15em;
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 540px) {
+      .quick-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .custom-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .custom-row input {
+      flex: 1;
+      min-width: 180px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      background: #fcfbf7;
+      font-size: 0.95rem;
+      color: var(--text-main);
+    }
+
+    .action-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s ease, opacity 0.2s ease;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .btn-nominal {
+      background: var(--bg-cream);
+      color: var(--text-main);
+      border: 1px solid var(--accent-matcha-dark);
+    }
+
+    .btn-nominal:hover {
+      background: var(--accent-matcha);
+    }
+
+    .btn-primary {
+      background: var(--accent-matcha-dark);
+      color: #ffffff;
+    }
+
+    .btn-secondary {
+      background: var(--bg-cream);
+      color: var(--text-main);
+      border: 1px solid var(--border-soft);
+    }
+
+    .btn-danger {
+      background: #fdeceb;
+      color: var(--status-err);
+      border: 1px solid #f5c2be;
+    }
+
+    .feedback {
+      margin-top: 12px;
+      font-size: 0.86rem;
+      color: var(--text-muted);
+      min-height: 20px;
+    }
+
+    .feedback.ok { color: var(--status-ok); font-weight: 600; }
+    .feedback.err { color: var(--status-err); font-weight: 600; }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    @media (max-width: 640px) {
+      .config-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      background: #fcfbf7;
+      font-size: 0.88rem;
+      color: var(--text-main);
+    }
+
+    .history-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--bg-cream);
+      font-size: 0.9rem;
+    }
+
+    .history-time {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Celengan Pintar</h1>
+        <p>Input Nominal & Kontrol PIN via Web ke ESP32 (MQTT)</p>
+      </div>
+      <div class="badge">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Menghubungkan MQTT...</span>
+      </div>
+    </header>
+
+    <!-- Saldo & Status Feedback -->
+    <section class="card">
+      <div class="card-title">Saldo Tercatat</div>
+      <div class="balance-amount" id="totalSaldo">Rp 0</div>
+      <div class="feedback" id="feedbackText">Password/PIN awal: 1234. Masukkan PIN sebelum mengirim input.</div>
+    </section>
+
+    <!-- Input Password / PIN dari Web -->
+    <section class="card">
+      <div class="card-title">Password / PIN Akses Web (Awal: 1234)</div>
+      <div class="pin-row">
+        <input
+          type="password"
+          id="pinInput"
+          value="1234"
+          maxlength="12"
+          placeholder="Masukkan PIN (awal: 1234)"
+          oninput="validasiPin()"
+        />
+        <button type="button" class="btn-secondary" onclick="togglePinVisibility()">Lihat / Sembunyikan</button>
+        <button type="button" class="btn-primary" onclick="kirimVerifikasiPin()">Kirim PIN ke ESP32</button>
+      </div>
+      <div class="feedback ok" id="pinStatusText">PIN saat ini cocok dengan default awal (1234).</div>
+    </section>
+
+    <!-- Input Nominal & Perintah dari Web ke ESP32 -->
+    <section class="card">
+      <div class="card-title">Input Nominal & Perintah dari Web (Publish ke ESP32)</div>
+
+      <div class="quick-grid">
+        <button class="btn-nominal" onclick="kirimNominal(2000)">+ Rp 2.000</button>
+        <button class="btn-nominal" onclick="kirimNominal(5000)">+ Rp 5.000</button>
+        <button class="btn-nominal" onclick="kirimNominal(10000)">+ Rp 10.000</button>
+        <button class="btn-nominal" onclick="kirimNominal(20000)">+ Rp 20.000</button>
+        <button class="btn-nominal" onclick="kirimNominal(50000)">+ Rp 50.000</button>
+        <button class="btn-nominal" onclick="kirimNominal(100000)">+ Rp 100.000</button>
+      </div>
+
+      <form class="custom-row" onsubmit="kirimNominalCustom(event)">
+        <input
+          type="number"
+          id="customNominal"
+          min="100"
+          step="100"
+          placeholder="Masukkan nominal kustom (misal: 15000)"
+          required
+        />
+        <button type="submit" class="btn-primary">Kirim Nominal</button>
+      </form>
+
+      <div class="action-row">
+        <button class="btn-secondary" onclick="kirimPerintah('buka_kunci')">Buka Kunci Servo</button>
+        <button class="btn-secondary" onclick="kirimPerintah('kunci_sekarang')">Kunci Sekarang</button>
+        <button class="btn-danger" onclick="resetSaldo()">Reset Saldo</button>
+      </div>
+    </section>
+
+    <!-- Riwayat Input dari Web -->
+    <section class="card">
+      <div class="card-title">Riwayat Input & Perintah dari Web</div>
+      <ul class="history-list" id="historyList">
+        <li class="empty-state">Belum ada input yang dikirim dari web.</li>
+      </ul>
+    </section>
+
+    <!-- Pengaturan Topik & Broker MQTT -->
+    <section class="card">
+      <div class="card-title">Pengaturan Broker & Topik MQTT</div>
+      <div class="config-grid">
+        <div class="field">
+          <label for="brokerUrl">Broker WebSocket URL</label>
+          <input type="text" id="brokerUrl" value="wss://broker.emqx.io:8084/mqtt" />
+        </div>
+        <div class="field">
+          <label for="topicInput">Topik Input Nominal (Publish)</label>
+          <input type="text" id="topicInput" value="celengan/web/input" />
+        </div>
+        <div class="field">
+          <label for="topicCmd">Topik Perintah & PIN (Publish)</label>
+          <input type="text" id="topicCmd" value="celengan/web/perintah" />
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="btn-primary" onclick="connectMQTT()">Sambungkan Ulang</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const PIN_AWAL = '1234';
+    let client = null;
+    let totalSaldo = 0;
+    let historyItems = [];
+
+    const formatRupiah = (angka) => {
+      return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+      }).format(angka);
+    };
+
+    function getPin() {
+      return document.getElementById('pinInput').value.trim();
+    }
+
+    function validasiPin() {
+      const pin = getPin();
+      const el = document.getElementById('pinStatusText');
+      if (!pin) {
+        el.className = 'feedback err';
+        el.textContent = 'PIN belum diisi (awal: 1234).';
+        return false;
+      }
+      if (pin === PIN_AWAL) {
+        el.className = 'feedback ok';
+        el.textContent = 'PIN cocok dengan default awal (1234).';
+      } else {
+        el.className = 'feedback';
+        el.textContent = `PIN custom "${pin}" siap dikirim ke ESP32 untuk diverifikasi.`;
+      }
+      return true;
+    }
+
+    function togglePinVisibility() {
+      const input = document.getElementById('pinInput');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function setStatus(state, text) {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      dot.className = 'dot ' + state;
+      label.textContent = text;
+    }
+
+    function setFeedback(msg, type = '') {
+      const el = document.getElementById('feedbackText');
+      el.className = 'feedback ' + type;
+      el.textContent = msg;
+    }
+
+    function updateUI() {
+      document.getElementById('totalSaldo').textContent = formatRupiah(totalSaldo);
+      const list = document.getElementById('historyList');
+      if (historyItems.length === 0) {
+        list.innerHTML = '<li class="empty-state">Belum ada input yang dikirim dari web.</li>';
+        return;
+      }
+      list.innerHTML = historyItems.map(item => `
+        <li class="history-item">
+          <div><strong>${item.label}</strong></div>
+          <span class="history-time">${item.waktu}</span>
+        </li>
+      `).join('');
+    }
+
+    function catatRiwayat(label) {
+      const waktu = new Date().toLocaleTimeString('id-ID');
+      historyItems.unshift({ label, waktu });
+      updateUI();
+    }
+
+    function cekKoneksiDanPin() {
+      if (!validasiPin()) {
+        setFeedback('Masukkan password/PIN terlebih dahulu (awal: 1234).', 'err');
+        return false;
+      }
+      if (!client || !client.connected) {
+        setFeedback('MQTT belum terhubung. Cek broker atau klik Sambungkan Ulang.', 'err');
+        return false;
+      }
+      return true;
+    }
+
+    function kirimVerifikasiPin() {
+      if (!cekKoneksiDanPin()) return;
+
+      const pin = getPin();
+      const topic = document.getElementById('topicCmd').value.trim();
+      const payload = JSON.stringify({
+        sumber: 'web',
+        perintah: 'verifikasi_pin',
+        pin: pin,
+        timestamp: Date.now()
+      });
+
+      client.publish(topic, payload, { qos: 1 }, (err) => {
+        if (err) {
+          setFeedback('Gagal mengirim PIN ke MQTT.', 'err');
+          return;
+        }
+        catatRiwayat(`Kirim PIN (${pin}) untuk verifikasi`);
+        setFeedback(`PIN "${pin}" dikirim ke topik "${topic}".`, 'ok');
+      });
+    }
+
+    function kirimNominal(nominal) {
+      const angka = Number(nominal);
+      if (!angka || angka <= 0) {
+        setFeedback('Nominal harus lebih dari 0.', 'err');
+        return;
+      }
+      if (!cekKoneksiDanPin()) return;
+
+      const pin = getPin();
+      const topic = document.getElementById('topicInput').value.trim();
+      const payload = JSON.stringify({
+        sumber: 'web',
+        pin: pin,
+        nominal: angka,
+        timestamp: Date.now()
+      });
+
+      client.publish(topic, payload, { qos: 1 }, (err) => {
+        if (err) {
+          setFeedback('Gagal mengirim nominal ke MQTT.', 'err');
+          return;
+        }
+        totalSaldo += angka;
+        catatRiwayat(`+${formatRupiah(angka)} (via Web, PIN: ${pin})`);
+        setFeedback(`Terkirim ke topik "${topic}": +${formatRupiah(angka)}`, 'ok');
+        updateUI();
+      });
+    }
+
+    function kirimNominalCustom(event) {
+      event.preventDefault();
+      const inputEl = document.getElementById('customNominal');
+      const val = Number(inputEl.value);
+      kirimNominal(val);
+      inputEl.value = '';
+    }
+
+    function kirimPerintah(aksi) {
+      if (!cekKoneksiDanPin()) return;
+
+      const pin = getPin();
+      const topic = document.getElementById('topicCmd').value.trim();
+      const payload = JSON.stringify({
+        sumber: 'web',
+        pin: pin,
+        perintah: aksi,
+        timestamp: Date.now()
+      });
+
+      client.publish(topic, payload, { qos: 1 }, (err) => {
+        if (err) {
+          setFeedback(`Gagal mengirim perintah "${aksi}".`, 'err');
+          return;
+        }
+        catatRiwayat(`Perintah: ${aksi} (PIN: ${pin})`);
+        setFeedback(`Perintah "${aksi}" terkirim ke topik "${topic}".`, 'ok');
+      });
+    }
+
+    function resetSaldo() {
+      totalSaldo = 0;
+      historyItems = [];
+      updateUI();
+      setFeedback('Saldo web direset ke Rp 0.');
+    }
+
+    function connectMQTT() {
+      if (client) {
+        client.end(true);
+      }
+
+      const url = document.getElementById('brokerUrl').value.trim();
+      const clientId = 'web_pin_celengan_' + Math.random().toString(16).substring(2, 10);
+
+      setStatus('', 'Menghubungkan...');
+
+      client = mqtt.connect(url, {
+        clientId: clientId,
+        clean: true,
+        connectTimeout: 5000,
+        reconnectPeriod: 3000
+      });
+
+      client.on('connect', () => {
+        setStatus('connected', 'Terhubung ke Broker');
+        setFeedback('Siap mengirim PIN & input dari web ke ESP32.');
+      });
+
+      client.on('reconnect', () => {
+        setStatus('', 'Menyambungkan ulang...');
+      });
+
+      client.on('error', (err) => {
+        console.error('MQTT Error:', err);
+        setStatus('error', 'Koneksi Error');
+        setFeedback('Terjadi error koneksi MQTT.', 'err');
+      });
+
+      client.on('close', () => {
+        setStatus('error', 'Terputus');
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      validasiPin();
+      connectMQTT();
+    });
+  </script>
+</body>
+</html>
